@@ -1,0 +1,15 @@
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# IDE and editor directories
+.vscode/
+.idea/
+
+# Node.js (if you ever decide to use npm/yarn)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Log files
+*.log
