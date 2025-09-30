@@ -1,5 +1,366 @@
+const ARTWORK_CONFIG = [
+    { id: 'artwork1', label: 'Back Wall - Left', defaultSrc: 'images/artwork1.jpg' },
+    { id: 'artwork2', label: 'Back Wall - Center', defaultSrc: 'images/artwork2.jpg' },
+    { id: 'artwork3', label: 'Back Wall - Right', defaultSrc: 'images/artwork3.jpg' },
+    { id: 'artwork4', label: 'Front Wall - Left', defaultSrc: 'images/artwork4.jpg' },
+    { id: 'artwork5', label: 'Front Wall - Center', defaultSrc: 'images/artwork5.jpg' },
+    { id: 'artwork6', label: 'Front Wall - Right', defaultSrc: 'images/artwork6.jpg' },
+    { id: 'artwork7', label: 'Right Wall - Left', defaultSrc: 'images/artwork7.jpg' },
+    { id: 'artwork8', label: 'Right Wall - Center', defaultSrc: 'images/artwork8.jpg' },
+    { id: 'artwork9', label: 'Right Wall - Right', defaultSrc: 'images/artwork9.jpg' },
+    { id: 'artwork10', label: 'Left Wall - Left', defaultSrc: 'images/artwork10.jpg' },
+    { id: 'artwork11', label: 'Left Wall - Center', defaultSrc: 'images/artwork11.jpg' },
+    { id: 'artwork12', label: 'Left Wall - Right', defaultSrc: 'images/artwork12.jpg' }
+];
+
+const ARTWORK_STORAGE_PREFIX = '3d-gallery-artwork:';
+const artworkConfigMap = new Map(ARTWORK_CONFIG.map(config => [config.id, config]));
+const artworkImageMap = new Map();
+const artworkPreviewElements = new Map();
+const artworkSlots = new Map();
+
+const baseArtworkHeight = 2.5;
+const artworkDepth = 0.05;
+
+const artworkTextureLoader = new THREE.TextureLoader();
+
 // --- Three.js Setup ---
 let scene, camera, renderer;
+
+const localStorageAvailable = (() => {
+    if (typeof window === 'undefined' || !('localStorage' in window)) {
+        return false;
+    }
+    try {
+        const testKey = `${ARTWORK_STORAGE_PREFIX}__test__`;
+        window.localStorage.setItem(testKey, '1');
+        window.localStorage.removeItem(testKey);
+        return true;
+    } catch (error) {
+        console.warn('LocalStorage is not available. Artwork customisation will not persist.', error);
+        return false;
+    }
+})();
+
+function getDefaultArtworkImage(artworkId) {
+    const config = artworkConfigMap.get(artworkId);
+    return config ? config.defaultSrc : '';
+}
+
+function loadStoredArtworkImage(artworkId) {
+    if (!localStorageAvailable) {
+        return null;
+    }
+    try {
+        return window.localStorage.getItem(`${ARTWORK_STORAGE_PREFIX}${artworkId}`);
+    } catch (error) {
+        console.warn('Unable to load stored artwork image', artworkId, error);
+        return null;
+    }
+}
+
+function saveArtworkImage(artworkId, dataUrl) {
+    if (!localStorageAvailable) {
+        return;
+    }
+    const storageKey = `${ARTWORK_STORAGE_PREFIX}${artworkId}`;
+    try {
+        if (dataUrl) {
+            window.localStorage.setItem(storageKey, dataUrl);
+        } else {
+            window.localStorage.removeItem(storageKey);
+        }
+    } catch (error) {
+        console.warn('Unable to store artwork image', artworkId, error);
+    }
+}
+
+function initialiseArtworkImages() {
+    ARTWORK_CONFIG.forEach(config => {
+        const stored = loadStoredArtworkImage(config.id);
+        artworkImageMap.set(config.id, stored || config.defaultSrc);
+    });
+}
+
+function getArtworkImage(artworkId) {
+    return artworkImageMap.get(artworkId) || getDefaultArtworkImage(artworkId);
+}
+
+function refreshArtworkPreview(artworkId, imageSrc) {
+    const preview = artworkPreviewElements.get(artworkId);
+    if (preview) {
+        preview.src = imageSrc || getDefaultArtworkImage(artworkId);
+    }
+}
+
+function updateArtworkImage(artworkId, dataUrl) {
+    const config = artworkConfigMap.get(artworkId);
+    if (!config) {
+        console.warn('Unknown artwork id:', artworkId);
+        return;
+    }
+
+    saveArtworkImage(artworkId, dataUrl);
+
+    const finalSrc = dataUrl || config.defaultSrc;
+    artworkImageMap.set(artworkId, finalSrc);
+
+    applyArtworkTexture(artworkId, finalSrc);
+    refreshArtworkPreview(artworkId, finalSrc);
+}
+
+function disposeMeshResources(mesh) {
+    if (!mesh) {
+        return;
+    }
+    if (mesh.geometry) {
+        mesh.geometry.dispose();
+    }
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    materials.forEach(material => {
+        if (!material) {
+            return;
+        }
+        if (material.map) {
+            material.map.dispose();
+        }
+        material.dispose();
+    });
+}
+
+function setSlotMesh(slot, mesh) {
+    if (slot.mesh) {
+        slot.group.remove(slot.mesh);
+        disposeMeshResources(slot.mesh);
+    }
+    slot.mesh = mesh;
+    if (mesh) {
+        slot.group.add(mesh);
+    }
+}
+
+function setSlotPlaceholder(slot, color = 0x333333) {
+    const fallbackGeo = new THREE.BoxGeometry(baseArtworkHeight * 0.75, baseArtworkHeight, artworkDepth);
+    const fallbackMaterial = new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0.0 });
+    const fallbackMesh = new THREE.Mesh(fallbackGeo, fallbackMaterial);
+    fallbackMesh.castShadow = true;
+    fallbackMesh.receiveShadow = true;
+    setSlotMesh(slot, fallbackMesh);
+}
+
+function applyArtworkTexture(artworkId, imageSrcOverride) {
+    const slot = artworkSlots.get(artworkId);
+    if (!slot) {
+        return;
+    }
+
+    const imageSrc = imageSrcOverride || getArtworkImage(artworkId);
+    const loadToken = (slot.loadToken || 0) + 1;
+    slot.loadToken = loadToken;
+
+    if (!imageSrc) {
+        setSlotPlaceholder(slot, 0x333333);
+        return;
+    }
+
+    setSlotPlaceholder(slot, 0x333333);
+
+    artworkTextureLoader.load(
+        imageSrc,
+        texture => {
+            if (slot.loadToken !== loadToken) {
+                texture.dispose();
+                return;
+            }
+
+            texture.colorSpace = THREE.SRGBColorSpace;
+            const imageElement = texture.image;
+            const naturalWidth = imageElement.naturalWidth || imageElement.width || baseArtworkHeight;
+            const naturalHeight = imageElement.naturalHeight || imageElement.height || baseArtworkHeight;
+            const aspectRatio = naturalWidth / Math.max(naturalHeight, 1);
+
+            const artworkWidth = baseArtworkHeight * aspectRatio;
+            const artworkGeo = new THREE.BoxGeometry(artworkWidth, baseArtworkHeight, artworkDepth);
+            const artworkMaterial = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.7, metalness: 0.1 });
+
+            const artworkMesh = new THREE.Mesh(artworkGeo, artworkMaterial);
+            artworkMesh.castShadow = true;
+            artworkMesh.receiveShadow = true;
+
+            setSlotMesh(slot, artworkMesh);
+        },
+        undefined,
+        error => {
+            if (slot.loadToken !== loadToken) {
+                return;
+            }
+            console.error(`Failed to load artwork texture for ${artworkId}`, error);
+            setSlotPlaceholder(slot, 0x550000);
+        }
+    );
+}
+
+function createArtworkManagerCard(config) {
+    const card = document.createElement('div');
+    card.className = 'artwork-manager-card';
+
+    const title = document.createElement('h3');
+    title.textContent = config.label;
+    card.appendChild(title);
+
+    const preview = document.createElement('img');
+    preview.alt = `${config.label} preview`;
+    preview.className = 'artwork-manager-preview';
+    preview.src = getArtworkImage(config.id);
+    artworkPreviewElements.set(config.id, preview);
+    card.appendChild(preview);
+
+    const fileInputLabel = document.createElement('label');
+    fileInputLabel.className = 'artwork-manager-upload';
+    fileInputLabel.textContent = 'Upload new image';
+
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.addEventListener('change', event => {
+        const file = event.target.files && event.target.files[0];
+        if (!file) {
+            return;
+        }
+
+        processImageFile(file)
+            .then(dataUrl => {
+                if (!dataUrl) {
+                    return;
+                }
+                if (dataUrl.length > 2.5 * 1024 * 1024) {
+                    alert('Image is too large after compression. Please choose a smaller file.');
+                    return;
+                }
+                updateArtworkImage(config.id, dataUrl);
+                fileInput.value = '';
+            })
+            .catch(error => {
+                console.error('Failed to process image', error);
+                alert('Unable to process the selected image. Please try a different file.');
+            });
+    });
+    fileInputLabel.appendChild(fileInput);
+    card.appendChild(fileInputLabel);
+
+    const actionsRow = document.createElement('div');
+    actionsRow.className = 'artwork-manager-actions';
+
+    const resetButton = document.createElement('button');
+    resetButton.type = 'button';
+    resetButton.textContent = 'Reset to default';
+    resetButton.addEventListener('click', () => {
+        updateArtworkImage(config.id, null);
+    });
+    actionsRow.appendChild(resetButton);
+
+    card.appendChild(actionsRow);
+
+    return card;
+}
+
+function processImageFile(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const image = new Image();
+            image.onload = () => {
+                const maxDimension = 1024;
+                let { width, height } = image;
+                if (width > height && width > maxDimension) {
+                    height = Math.round((height / width) * maxDimension);
+                    width = maxDimension;
+                } else if (height >= width && height > maxDimension) {
+                    width = Math.round((width / height) * maxDimension);
+                    height = maxDimension;
+                }
+
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(image, 0, 0, width, height);
+
+                const mimeType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+                const quality = mimeType === 'image/png' ? undefined : 0.85;
+                const dataUrl = canvas.toDataURL(mimeType, quality);
+                resolve(dataUrl);
+            };
+            image.onerror = () => reject(new Error('Unable to load image for processing.'));
+            image.src = reader.result;
+        };
+        reader.onerror = () => reject(reader.error || new Error('Unable to read file.'));
+        reader.readAsDataURL(file);
+    });
+}
+
+function setupArtworkManagerUI() {
+    const toggleButton = document.createElement('button');
+    toggleButton.type = 'button';
+    toggleButton.id = 'artwork-manager-toggle';
+    toggleButton.textContent = 'Manage Artworks';
+    document.body.appendChild(toggleButton);
+
+    const overlay = document.createElement('div');
+    overlay.id = 'artwork-manager-overlay';
+
+    const modal = document.createElement('div');
+    modal.className = 'artwork-manager-modal';
+    overlay.appendChild(modal);
+
+    const header = document.createElement('div');
+    header.className = 'artwork-manager-header';
+
+    const title = document.createElement('h2');
+    title.textContent = 'Artwork Manager';
+    header.appendChild(title);
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'artwork-manager-close';
+    closeButton.textContent = '×';
+    header.appendChild(closeButton);
+
+    modal.appendChild(header);
+
+    if (!localStorageAvailable) {
+        const warning = document.createElement('p');
+        warning.className = 'artwork-manager-warning';
+        warning.textContent = 'Local storage is not available in this browser. Custom artworks will reset when the page reloads.';
+        modal.appendChild(warning);
+    }
+
+    const grid = document.createElement('div');
+    grid.className = 'artwork-manager-grid';
+    ARTWORK_CONFIG.forEach(config => {
+        const card = createArtworkManagerCard(config);
+        grid.appendChild(card);
+    });
+    modal.appendChild(grid);
+
+    document.body.appendChild(overlay);
+
+    const closeModal = () => {
+        overlay.classList.remove('open');
+    };
+
+    const openModal = () => {
+        overlay.classList.add('open');
+    };
+
+    toggleButton.addEventListener('click', openModal);
+    closeButton.addEventListener('click', closeModal);
+    overlay.addEventListener('click', event => {
+        if (event.target === overlay) {
+            closeModal();
+        }
+    });
+}
 
 // --- Cannon.js Setup ---
 let world;
@@ -33,6 +394,8 @@ function init() {
     // Scene
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x000000); // Deep black background
+
+    artworkSlots.clear();
 
     // Camera
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -151,8 +514,8 @@ function init() {
     world.addBody(groundBody);
 
     const groundGeometry = new THREE.PlaneGeometry(100, 100);
-    const textureLoader = new THREE.TextureLoader();
-    const woodFloorTexture = textureLoader.load('https://cdn.polyhaven.com/asset_img/primary/wood_planks.png?height=720', function(texture) {
+    const floorTextureLoader = new THREE.TextureLoader();
+    const woodFloorTexture = floorTextureLoader.load('https://cdn.polyhaven.com/asset_img/primary/wood_planks.png?height=720', function(texture) {
         texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
         texture.repeat.set((hallSize / 4) * 10, (hallSize / 4) * 10); // Increase tiling by 10x
         texture.anisotropy = renderer.capabilities.getMaxAnisotropy(); // Improve texture quality at glancing angles
@@ -248,95 +611,37 @@ function init() {
     const wallThickness = 0.5; // meters
     // hallSize and wallHeight are now defined earlier, before the Lighting section.
 
-    // Artwork Placeholders
-    // const artworkPlaceholderMaterial = new THREE.MeshStandardMaterial({ color: 0xf0f0f0, roughness: 0.9 }); // Commented out
-    const artworkImageUrls = [
-        'images/artwork1.jpg',
-        'images/artwork2.jpg',
-        'images/artwork3.jpg',
-        'images/artwork4.jpg',
-        'images/artwork5.jpg',
-        'images/artwork6.jpg',
-        'images/artwork7.jpg',
-        'images/artwork8.jpg',
-        'images/artwork9.jpg',
-        'images/artwork10.jpg',
-        'images/artwork11.jpg',
-        'images/artwork12.jpg'
-    ];
-    // textureLoader is already defined globally for the floor texture
-    const artworkDepth = 0.05; // Slight extrusion from the wall
-    // Base height for all artworks. Width will be calculated based on aspect ratio to prevent stretching.
-    const baseArtworkHeight = 2.5; // A standard height for all artwork canvases.
-    const artworkYPos = wallHeight / 2.2; 
+    // Artwork placement and texture setup
+    const artworkYPos = wallHeight / 2.2;
 
-    const createArtwork = (x, y, z, rotationY, imageUrl) => {
-        // Create a group to hold the artwork. This allows us to position and rotate it
-        // immediately, and then add the mesh asynchronously once the texture loads.
+    let artworkConfigIndex = 0;
+    const getNextArtworkConfig = () =>
+        artworkConfigIndex < ARTWORK_CONFIG.length ? ARTWORK_CONFIG[artworkConfigIndex++] : null;
+
+    const createArtworkSlot = (x, y, z, rotationY) => {
+        const config = getNextArtworkConfig();
+        if (!config) {
+            return;
+        }
+
         const artworkGroup = new THREE.Group();
         artworkGroup.position.set(x, y, z);
         artworkGroup.rotation.y = rotationY;
+        artworkGroup.userData.artworkId = config.id;
         scene.add(artworkGroup);
 
-        if (imageUrl) {
-            textureLoader.load(
-                imageUrl,
-                // onLoad callback
-                (texture) => {
-                    texture.colorSpace = THREE.SRGBColorSpace;
-
-                    // Calculate aspect ratio from the loaded image
-                    const aspectRatio = texture.image.naturalWidth / texture.image.naturalHeight;
-                    
-                    // Calculate dimensions based on the base height and aspect ratio
-                    const artworkHeight = baseArtworkHeight;
-                    const artworkWidth = artworkHeight * aspectRatio;
-
-                    // Create geometry with the correct aspect ratio
-                    const artworkGeo = new THREE.BoxGeometry(artworkWidth, artworkHeight, artworkDepth);
-                    const artworkMaterial = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.7, metalness: 0.1 });
-                    
-                    const artworkMesh = new THREE.Mesh(artworkGeo, artworkMaterial);
-                    artworkMesh.castShadow = true;
-                    artworkMesh.receiveShadow = true;
-                    
-                    // Add the mesh to the group. Its position is relative to the group, so (0,0,0) is correct.
-                    artworkGroup.add(artworkMesh);
-                },
-                // onProgress callback (optional)
-                undefined,
-                // onError callback
-                (err) => {
-                    console.error(`An error occurred loading artwork: ${imageUrl}`, err);
-                    // Add a reddish placeholder to the group on error to make it noticeable
-                    const fallbackGeo = new THREE.BoxGeometry(baseArtworkHeight * 0.75, baseArtworkHeight, artworkDepth);
-                    const fallbackMaterial = new THREE.MeshStandardMaterial({ color: 0x550000 });
-                    const fallbackMesh = new THREE.Mesh(fallbackGeo, fallbackMaterial);
-                    artworkGroup.add(fallbackMesh);
-                }
-            );
-        } else {
-            // Synchronously create a fallback placeholder if no image URL is provided
-            const fallbackGeo = new THREE.BoxGeometry(baseArtworkHeight * 0.75, baseArtworkHeight, artworkDepth); // Default size
-            const fallbackMaterial = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.9, metalness: 0.0 });
-            const fallbackMesh = new THREE.Mesh(fallbackGeo, fallbackMaterial);
-            artworkGroup.add(fallbackMesh);
-        }
+        const slot = { group: artworkGroup, mesh: null, loadToken: 0 };
+        artworkSlots.set(config.id, slot);
+        applyArtworkTexture(config.id);
     };
 
-    // --- Artwork Placement ---
     // All positions are relative to the gallery center (0,0,0), where the bench is.
     // Artworks are placed so their back is flush with the inner surface of the walls.
 
-    // Helper to get the next image URL, or null if we've used them all
-    let artIndex = 0;
-    const getNextImageUrl = () => (artIndex < artworkImageUrls.length) ? artworkImageUrls[artIndex++] : null;
-
-    const ARTWORK_PLACEMENT_Y = artworkYPos; // artworkYPos is defined earlier as wallHeight / 2.2
-    const ARTWORK_PLACEMENT_Y_HIGH = 4.5;    // For the specific high-placed artwork
+    const ARTWORK_PLACEMENT_Y = artworkYPos;
 
     // Define an offset to move artworks from the wall surface towards the gallery center.
-    const artworkOffsetFromWallTowardCenter = 0.3; // Adjusted: 0.7m from wall towards center.
+    const artworkOffsetFromWallTowardCenter = 0.3; // Adjusted: 0.3m from wall towards center.
 
     // Calculate the base distance from the gallery center (0,0,0) to where the artwork's center will be.
     // This accounts for hall size, wall thickness, artwork depth, and the new offset.
@@ -349,29 +654,32 @@ function init() {
     // Define offsets for placing artworks along the length of a wall (relative to wall center)
     const ALONG_WALL_OFFSET_CENTER = 0;
     const ALONG_WALL_OFFSET_SIDE = hallSize / 3.5; // e.g., positions at -5 and +5 for hallSize 20
-    const ALONG_WALL_OFFSET_BACK_HIGH_LEFT_X = -hallSize / 8; // e.g., -2.5 for the high-left artwork
 
-    // --- Create Artworks (3 per wall) --- 
+    // --- Create Artworks (3 per wall) ---
 
     // Back wall artworks (-Z wall, facing +Z)
-    createArtwork(-ALONG_WALL_OFFSET_SIDE, ARTWORK_PLACEMENT_Y, ART_PLACEMENT_NEG_AXIS, 0, getNextImageUrl());
-    createArtwork( ALONG_WALL_OFFSET_SIDE, ARTWORK_PLACEMENT_Y, ART_PLACEMENT_NEG_AXIS, 0, getNextImageUrl());
-    createArtwork( ALONG_WALL_OFFSET_CENTER, ARTWORK_PLACEMENT_Y, ART_PLACEMENT_NEG_AXIS, 0, getNextImageUrl());
+    createArtworkSlot(-ALONG_WALL_OFFSET_SIDE, ARTWORK_PLACEMENT_Y, ART_PLACEMENT_NEG_AXIS, 0);
+    createArtworkSlot( ALONG_WALL_OFFSET_SIDE, ARTWORK_PLACEMENT_Y, ART_PLACEMENT_NEG_AXIS, 0);
+    createArtworkSlot( ALONG_WALL_OFFSET_CENTER, ARTWORK_PLACEMENT_Y, ART_PLACEMENT_NEG_AXIS, 0);
 
     // Front wall artworks (+Z wall, facing -Z)
-    createArtwork(-ALONG_WALL_OFFSET_SIDE, ARTWORK_PLACEMENT_Y, ART_PLACEMENT_POS_AXIS, Math.PI, getNextImageUrl());
-    createArtwork( ALONG_WALL_OFFSET_SIDE, ARTWORK_PLACEMENT_Y, ART_PLACEMENT_POS_AXIS, Math.PI, getNextImageUrl());
-    createArtwork( ALONG_WALL_OFFSET_CENTER, ARTWORK_PLACEMENT_Y, ART_PLACEMENT_POS_AXIS, Math.PI, getNextImageUrl()); // Moved from back wall
+    createArtworkSlot(-ALONG_WALL_OFFSET_SIDE, ARTWORK_PLACEMENT_Y, ART_PLACEMENT_POS_AXIS, Math.PI);
+    createArtworkSlot( ALONG_WALL_OFFSET_SIDE, ARTWORK_PLACEMENT_Y, ART_PLACEMENT_POS_AXIS, Math.PI);
+    createArtworkSlot( ALONG_WALL_OFFSET_CENTER, ARTWORK_PLACEMENT_Y, ART_PLACEMENT_POS_AXIS, Math.PI);
 
     // Left wall artworks (-X wall, facing +X)
-    createArtwork(ART_PLACEMENT_NEG_AXIS, ARTWORK_PLACEMENT_Y, -ALONG_WALL_OFFSET_SIDE, Math.PI / 2, getNextImageUrl());
-    createArtwork(ART_PLACEMENT_NEG_AXIS, ARTWORK_PLACEMENT_Y,  ALONG_WALL_OFFSET_CENTER, Math.PI / 2, getNextImageUrl());
-    createArtwork(ART_PLACEMENT_NEG_AXIS, ARTWORK_PLACEMENT_Y,  ALONG_WALL_OFFSET_SIDE, Math.PI / 2, getNextImageUrl());
+    createArtworkSlot(ART_PLACEMENT_NEG_AXIS, ARTWORK_PLACEMENT_Y, -ALONG_WALL_OFFSET_SIDE, Math.PI / 2);
+    createArtworkSlot(ART_PLACEMENT_NEG_AXIS, ARTWORK_PLACEMENT_Y,  ALONG_WALL_OFFSET_CENTER, Math.PI / 2);
+    createArtworkSlot(ART_PLACEMENT_NEG_AXIS, ARTWORK_PLACEMENT_Y,  ALONG_WALL_OFFSET_SIDE, Math.PI / 2);
 
     // Right wall artworks (+X wall, facing -X)
-    createArtwork(ART_PLACEMENT_POS_AXIS, ARTWORK_PLACEMENT_Y, -ALONG_WALL_OFFSET_SIDE, -Math.PI / 2, getNextImageUrl());
-    createArtwork(ART_PLACEMENT_POS_AXIS, ARTWORK_PLACEMENT_Y,  ALONG_WALL_OFFSET_CENTER, -Math.PI / 2, getNextImageUrl());
-    createArtwork(ART_PLACEMENT_POS_AXIS, ARTWORK_PLACEMENT_Y,  ALONG_WALL_OFFSET_SIDE, -Math.PI / 2, getNextImageUrl());
+    createArtworkSlot(ART_PLACEMENT_POS_AXIS, ARTWORK_PLACEMENT_Y, -ALONG_WALL_OFFSET_SIDE, -Math.PI / 2);
+    createArtworkSlot(ART_PLACEMENT_POS_AXIS, ARTWORK_PLACEMENT_Y,  ALONG_WALL_OFFSET_CENTER, -Math.PI / 2);
+    createArtworkSlot(ART_PLACEMENT_POS_AXIS, ARTWORK_PLACEMENT_Y,  ALONG_WALL_OFFSET_SIDE, -Math.PI / 2);
+
+    if (artworkConfigIndex < ARTWORK_CONFIG.length) {
+        console.warn('Not all artwork configurations were placed in the gallery. Remaining:', ARTWORK_CONFIG.length - artworkConfigIndex);
+    }
 
     function createWall(width, height, depth, x, y, z, rotationY = 0) {
         // Three.js Wall
@@ -579,4 +887,6 @@ function animate() {
     renderer.render(scene, camera);
 }
 
+initialiseArtworkImages();
 init();
+setupArtworkManagerUI();

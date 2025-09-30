@@ -7,3 +7,155 @@ body {
 canvas {
     display: block; /* Remove extra space below canvas */
 }
+
+#artwork-manager-toggle {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 20;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 4px;
+    background-color: rgba(0, 0, 0, 0.65);
+    color: #fff;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+#artwork-manager-toggle:hover,
+#artwork-manager-toggle:focus {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+#artwork-manager-overlay {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.75);
+    z-index: 30;
+    padding: 40px 20px;
+}
+
+#artwork-manager-overlay.open {
+    display: flex;
+}
+
+.artwork-manager-modal {
+    max-width: 960px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    background-color: rgba(15, 15, 15, 0.95);
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+    color: #f5f5f5;
+    position: relative;
+}
+
+.artwork-manager-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.artwork-manager-header h2 {
+    margin: 0;
+    font-size: 22px;
+    letter-spacing: 0.5px;
+}
+
+.artwork-manager-close {
+    background: none;
+    border: none;
+    color: inherit;
+    font-size: 28px;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.artwork-manager-warning {
+    background-color: rgba(255, 82, 82, 0.15);
+    border: 1px solid rgba(255, 82, 82, 0.4);
+    color: #ffcdd2;
+    padding: 12px;
+    border-radius: 6px;
+    margin-bottom: 16px;
+    font-size: 14px;
+}
+
+.artwork-manager-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+}
+
+.artwork-manager-card {
+    background-color: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.artwork-manager-card h3 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.artwork-manager-preview {
+    width: 100%;
+    aspect-ratio: 3 / 4;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.artwork-manager-upload {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    font-size: 13px;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+
+.artwork-manager-upload input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.artwork-manager-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.artwork-manager-actions button {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: none;
+    background-color: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.artwork-manager-actions button:hover,
+.artwork-manager-actions button:focus {
+    background-color: rgba(255, 255, 255, 0.22);
+}
