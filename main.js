@@ -19,6 +19,29 @@ const artworkImageMap = new Map();
 const artworkPreviewElements = new Map();
 const artworkSlots = new Map();
 
+const WALL_PREVIEW_POSITION_OVERRIDES = new Map([
+    ['Front Wall', new Map([
+        ['artwork4', 'Left'],
+        ['artwork5', 'Right'],
+        ['artwork6', 'Center'],
+    ])],
+    ['Right Wall', new Map([
+        ['artwork7', 'Right'],
+        ['artwork9', 'Left'],
+    ])],
+    ['Left Wall', new Map([
+        ['artwork10', 'Right'],
+        ['artwork12', 'Left'],
+    ])],
+]);
+
+const WALL_PREVIEW_HEADING_OVERRIDES = new Map([
+    ['Back Wall', 'Front Wall'],
+    ['Front Wall', 'Back Wall'],
+    ['Right Wall', 'Left Wall'],
+    ['Left Wall', 'Right Wall'],
+]);
+
 let pointerLockOverlay = null;
 let closeArtworkManagerModal = () => {};
 let isArtworkManagerOpen = false;
@@ -430,7 +453,12 @@ function setupArtworkManagerUI() {
     ARTWORK_CONFIG.forEach(config => {
         const [wallNameRaw, ...positionParts] = config.label.split(' - ');
         const wallName = wallNameRaw || 'Gallery';
-        const positionName = positionParts.length ? positionParts.join(' - ') : config.label;
+        let positionName = positionParts.length ? positionParts.join(' - ') : config.label;
+
+        const overrideMap = WALL_PREVIEW_POSITION_OVERRIDES.get(wallName);
+        if (overrideMap && overrideMap.has(config.id)) {
+            positionName = overrideMap.get(config.id);
+        }
 
         if (!wallGroups.has(wallName)) {
             wallGroups.set(wallName, []);
@@ -462,7 +490,7 @@ function setupArtworkManagerUI() {
 
         const wallHeading = document.createElement('h3');
         wallHeading.className = 'artwork-manager-wall-title';
-        wallHeading.textContent = wallName;
+        wallHeading.textContent = WALL_PREVIEW_HEADING_OVERRIDES.get(wallName) || wallName;
         section.appendChild(wallHeading);
 
         const grid = document.createElement('div');
@@ -820,12 +848,12 @@ function init() {
 
     // Back wall artworks (-Z wall, facing +Z)
     createArtworkSlot(-ALONG_WALL_OFFSET_SIDE, ARTWORK_PLACEMENT_Y, ART_PLACEMENT_NEG_AXIS, 0);
-    createArtworkSlot( ALONG_WALL_OFFSET_SIDE, ARTWORK_PLACEMENT_Y, ART_PLACEMENT_NEG_AXIS, 0);
     createArtworkSlot( ALONG_WALL_OFFSET_CENTER, ARTWORK_PLACEMENT_Y, ART_PLACEMENT_NEG_AXIS, 0);
+    createArtworkSlot( ALONG_WALL_OFFSET_SIDE, ARTWORK_PLACEMENT_Y, ART_PLACEMENT_NEG_AXIS, 0);
 
     // Front wall artworks (+Z wall, facing -Z)
-    createArtworkSlot(-ALONG_WALL_OFFSET_SIDE, ARTWORK_PLACEMENT_Y, ART_PLACEMENT_POS_AXIS, Math.PI);
     createArtworkSlot( ALONG_WALL_OFFSET_SIDE, ARTWORK_PLACEMENT_Y, ART_PLACEMENT_POS_AXIS, Math.PI);
+    createArtworkSlot(-ALONG_WALL_OFFSET_SIDE, ARTWORK_PLACEMENT_Y, ART_PLACEMENT_POS_AXIS, Math.PI);
     createArtworkSlot( ALONG_WALL_OFFSET_CENTER, ARTWORK_PLACEMENT_Y, ART_PLACEMENT_POS_AXIS, Math.PI);
 
     // Left wall artworks (-X wall, facing +X)
@@ -834,9 +862,9 @@ function init() {
     createArtworkSlot(ART_PLACEMENT_NEG_AXIS, ARTWORK_PLACEMENT_Y,  ALONG_WALL_OFFSET_SIDE, Math.PI / 2);
 
     // Right wall artworks (+X wall, facing -X)
-    createArtworkSlot(ART_PLACEMENT_POS_AXIS, ARTWORK_PLACEMENT_Y, -ALONG_WALL_OFFSET_SIDE, -Math.PI / 2);
-    createArtworkSlot(ART_PLACEMENT_POS_AXIS, ARTWORK_PLACEMENT_Y,  ALONG_WALL_OFFSET_CENTER, -Math.PI / 2);
     createArtworkSlot(ART_PLACEMENT_POS_AXIS, ARTWORK_PLACEMENT_Y,  ALONG_WALL_OFFSET_SIDE, -Math.PI / 2);
+    createArtworkSlot(ART_PLACEMENT_POS_AXIS, ARTWORK_PLACEMENT_Y,  ALONG_WALL_OFFSET_CENTER, -Math.PI / 2);
+    createArtworkSlot(ART_PLACEMENT_POS_AXIS, ARTWORK_PLACEMENT_Y, -ALONG_WALL_OFFSET_SIDE, -Math.PI / 2);
 
     if (artworkConfigIndex < ARTWORK_CONFIG.length) {
         console.warn('Not all artwork configurations were placed in the gallery. Remaining:', ARTWORK_CONFIG.length - artworkConfigIndex);

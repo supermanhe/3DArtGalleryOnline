@@ -174,7 +174,7 @@ canvas {
 }
 
 .artwork-manager-upload {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
@@ -187,6 +187,8 @@ canvas {
     position: relative;
     overflow: hidden;
     width: 100%;
+    box-sizing: border-box;
+    align-self: stretch;
 }
 
 .artwork-manager-upload input[type="file"] {
