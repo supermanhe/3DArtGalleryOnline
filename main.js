@@ -23,10 +23,90 @@ let pointerLockOverlay = null;
 let closeArtworkManagerModal = () => {};
 let isArtworkManagerOpen = false;
 
+let loadingOverlayElement = null;
+let loadingProgressElement = null;
+let hasInitialGalleryLoadFinished = false;
+
 const baseArtworkHeight = 2.5;
 const artworkDepth = 0.05;
 
-const artworkTextureLoader = new THREE.TextureLoader();
+const loadingManager = new THREE.LoadingManager();
+const artworkTextureLoader = new THREE.TextureLoader(loadingManager);
+
+// Loading overlay management for artwork textures
+function ensureLoadingOverlayElements() {
+    if (!loadingOverlayElement) {
+        loadingOverlayElement = document.getElementById('loading-overlay');
+    }
+    if (!loadingProgressElement) {
+        loadingProgressElement = document.getElementById('loading-progress');
+    }
+}
+
+function showLoadingOverlay() {
+    ensureLoadingOverlayElements();
+    if (loadingOverlayElement) {
+        loadingOverlayElement.classList.remove('hidden');
+    }
+}
+
+function hideLoadingOverlay() {
+    ensureLoadingOverlayElements();
+    if (loadingOverlayElement) {
+        loadingOverlayElement.classList.add('hidden');
+    }
+}
+
+function updateLoadingMessage(text) {
+    ensureLoadingOverlayElements();
+    if (loadingProgressElement) {
+        loadingProgressElement.textContent = text;
+    }
+}
+
+function initialiseLoadingOverlay() {
+    ensureLoadingOverlayElements();
+    updateLoadingMessage('Loading gallery...');
+    showLoadingOverlay();
+}
+
+loadingManager.onStart = () => {
+    if (hasInitialGalleryLoadFinished) {
+        return;
+    }
+    updateLoadingMessage('Loading gallery...');
+    showLoadingOverlay();
+};
+
+loadingManager.onProgress = (url, itemsLoaded, itemsTotal) => {
+    if (hasInitialGalleryLoadFinished || !itemsTotal) {
+        return;
+    }
+    const percent = Math.round((itemsLoaded / itemsTotal) * 100);
+    updateLoadingMessage(`Loading gallery... ${percent}%`);
+};
+
+loadingManager.onLoad = () => {
+    if (hasInitialGalleryLoadFinished) {
+        return;
+    }
+    hasInitialGalleryLoadFinished = true;
+    updateLoadingMessage('Gallery ready');
+    setTimeout(() => {
+        hideLoadingOverlay();
+    }, 200);
+};
+
+loadingManager.onError = () => {
+    if (hasInitialGalleryLoadFinished) {
+        return;
+    }
+    hasInitialGalleryLoadFinished = true;
+    updateLoadingMessage('Failed to load some artworks.');
+    setTimeout(() => {
+        hideLoadingOverlay();
+    }, 1200);
+};
 
 // --- Three.js Setup ---
 let scene, camera, renderer;
@@ -969,6 +1049,7 @@ function animate() {
     renderer.render(scene, camera);
 }
 
+initialiseLoadingOverlay();
 initialiseArtworkImages();
 init();
 setupArtworkManagerUI();
