@@ -19,6 +19,10 @@ const artworkImageMap = new Map();
 const artworkPreviewElements = new Map();
 const artworkSlots = new Map();
 
+let pointerLockOverlay = null;
+let closeArtworkManagerModal = () => {};
+let isArtworkManagerOpen = false;
+
 const baseArtworkHeight = 2.5;
 const artworkDepth = 0.05;
 
@@ -200,12 +204,12 @@ function applyArtworkTexture(artworkId, imageSrcOverride) {
     );
 }
 
-function createArtworkManagerCard(config) {
+function createArtworkManagerCard(config, displayLabel) {
     const card = document.createElement('div');
     card.className = 'artwork-manager-card';
 
     const title = document.createElement('h3');
-    title.textContent = config.label;
+    title.textContent = displayLabel || config.label;
     card.appendChild(title);
 
     const preview = document.createElement('img');
@@ -304,7 +308,14 @@ function setupArtworkManagerUI() {
     toggleButton.type = 'button';
     toggleButton.id = 'artwork-manager-toggle';
     toggleButton.textContent = 'Manage Artworks';
-    document.body.appendChild(toggleButton);
+    toggleButton.setAttribute('aria-expanded', 'false');
+    toggleButton.setAttribute('aria-controls', 'artwork-manager-overlay');
+
+    if (pointerLockOverlay) {
+        pointerLockOverlay.appendChild(toggleButton);
+    } else {
+        document.body.appendChild(toggleButton);
+    }
 
     const overlay = document.createElement('div');
     overlay.id = 'artwork-manager-overlay';
@@ -335,28 +346,98 @@ function setupArtworkManagerUI() {
         modal.appendChild(warning);
     }
 
-    const grid = document.createElement('div');
-    grid.className = 'artwork-manager-grid';
+    const wallGroups = new Map();
     ARTWORK_CONFIG.forEach(config => {
-        const card = createArtworkManagerCard(config);
-        grid.appendChild(card);
+        const [wallNameRaw, ...positionParts] = config.label.split(' - ');
+        const wallName = wallNameRaw || 'Gallery';
+        const positionName = positionParts.length ? positionParts.join(' - ') : config.label;
+
+        if (!wallGroups.has(wallName)) {
+            wallGroups.set(wallName, []);
+        }
+
+        wallGroups.get(wallName).push({ config, positionName });
     });
-    modal.appendChild(grid);
+
+    const positionPriority = new Map([
+        ['Left', 0],
+        ['Center', 1],
+        ['Right', 2],
+    ]);
+
+    wallGroups.forEach(groupItems => {
+        groupItems.sort((a, b) => {
+            const orderA = positionPriority.has(a.positionName) ? positionPriority.get(a.positionName) : positionPriority.size;
+            const orderB = positionPriority.has(b.positionName) ? positionPriority.get(b.positionName) : positionPriority.size;
+            if (orderA === orderB) {
+                return 0;
+            }
+            return orderA - orderB;
+        });
+    });
+
+    wallGroups.forEach((groupItems, wallName) => {
+        const section = document.createElement('section');
+        section.className = 'artwork-manager-wall-section';
+
+        const wallHeading = document.createElement('h3');
+        wallHeading.className = 'artwork-manager-wall-title';
+        wallHeading.textContent = wallName;
+        section.appendChild(wallHeading);
+
+        const grid = document.createElement('div');
+        grid.className = 'artwork-manager-grid';
+
+        groupItems.forEach(({ config, positionName }) => {
+            const card = createArtworkManagerCard(config, positionName);
+            grid.appendChild(card);
+        });
+
+        section.appendChild(grid);
+        modal.appendChild(section);
+    });
 
     document.body.appendChild(overlay);
 
     const closeModal = () => {
+        if (!isArtworkManagerOpen) {
+            return;
+        }
         overlay.classList.remove('open');
+        isArtworkManagerOpen = false;
+        toggleButton.classList.remove('active');
+        toggleButton.setAttribute('aria-expanded', 'false');
     };
 
     const openModal = () => {
+        if (isArtworkManagerOpen) {
+            return;
+        }
         overlay.classList.add('open');
+        isArtworkManagerOpen = true;
+        toggleButton.classList.add('active');
+        toggleButton.setAttribute('aria-expanded', 'true');
     };
 
-    toggleButton.addEventListener('click', openModal);
+    closeArtworkManagerModal = closeModal;
+
+    toggleButton.addEventListener('click', () => {
+        if (isArtworkManagerOpen) {
+            closeModal();
+        } else {
+            openModal();
+        }
+    });
+
     closeButton.addEventListener('click', closeModal);
     overlay.addEventListener('click', event => {
         if (event.target === overlay) {
+            closeModal();
+        }
+    });
+
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
             closeModal();
         }
     });
@@ -714,20 +795,18 @@ function init() {
 
 
     // Pointer Lock Controls Setup
-    const instructions = document.createElement('div');
-    instructions.innerHTML = 'Click to play';
-    instructions.style.position = 'absolute';
-    instructions.style.top = '50%';
-    instructions.style.left = '50%';
-    instructions.style.transform = 'translate(-50%, -50%)';
-    instructions.style.fontSize = '24px';
-    instructions.style.color = 'white';
-    instructions.style.backgroundColor = 'rgba(0,0,0,0.5)';
-    instructions.style.padding = '10px';
-    instructions.style.cursor = 'pointer';
-    document.body.appendChild(instructions);
+    pointerLockOverlay = document.createElement('div');
+    pointerLockOverlay.id = 'pointer-lock-overlay';
 
-    instructions.addEventListener('click', () => {
+    const playButton = document.createElement('button');
+    playButton.type = 'button';
+    playButton.id = 'pointer-lock-play';
+    playButton.textContent = 'Click to play';
+    pointerLockOverlay.appendChild(playButton);
+
+    document.body.appendChild(pointerLockOverlay);
+
+    playButton.addEventListener('click', () => {
         document.body.requestPointerLock();
     });
 
@@ -745,12 +824,15 @@ function init() {
 function onPointerLockChange() {
     if (document.pointerLockElement === document.body) {
         controlsEnabled = true;
-        const instructions = document.querySelector('div[style*="absolute"]');
-        if (instructions) instructions.style.display = 'none';
+        if (pointerLockOverlay) {
+            pointerLockOverlay.classList.add('hidden');
+        }
+        closeArtworkManagerModal();
     } else {
         controlsEnabled = false;
-        const instructions = document.querySelector('div[style*="absolute"]');
-        if (instructions) instructions.style.display = 'block';
+        if (pointerLockOverlay) {
+            pointerLockOverlay.classList.remove('hidden');
+        }
     }
 }
 

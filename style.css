@@ -8,24 +8,59 @@ canvas {
     display: block; /* Remove extra space below canvas */
 }
 
-#artwork-manager-toggle {
-    position: absolute;
-    top: 20px;
-    left: 20px;
-    z-index: 20;
-    padding: 10px 16px;
-    border: none;
-    border-radius: 4px;
-    background-color: rgba(0, 0, 0, 0.65);
+#pointer-lock-overlay {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 24px 32px;
+    background-color: rgba(0, 0, 0, 0.68);
+    border-radius: 14px;
     color: #fff;
-    font-size: 14px;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
+    text-align: center;
+    z-index: 25;
+    min-width: 260px;
+    box-shadow: 0 20px 45px rgba(0, 0, 0, 0.45);
 }
 
-#artwork-manager-toggle:hover,
-#artwork-manager-toggle:focus {
-    background-color: rgba(255, 255, 255, 0.2);
+#pointer-lock-overlay.hidden {
+    display: none;
+}
+
+#pointer-lock-overlay button {
+    width: 100%;
+    min-width: 220px;
+    padding: 12px 20px;
+    border-radius: 8px;
+    border: none;
+    background-color: rgba(255, 255, 255, 0.18);
+    color: #fff;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+#pointer-lock-overlay button:hover,
+#pointer-lock-overlay button:focus {
+    background-color: rgba(255, 255, 255, 0.28);
+}
+
+#pointer-lock-overlay button:active {
+    transform: scale(0.98);
+}
+
+#artwork-manager-toggle {
+    font-size: 15px;
+}
+
+#artwork-manager-toggle.active {
+    background-color: rgba(255, 255, 255, 0.32);
 }
 
 #artwork-manager-overlay {
@@ -88,10 +123,31 @@ canvas {
     font-size: 14px;
 }
 
+.artwork-manager-wall-section {
+    margin-bottom: 28px;
+}
+
+.artwork-manager-wall-section:last-of-type {
+    margin-bottom: 0;
+}
+
+.artwork-manager-wall-title {
+    margin: 0 0 12px;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+}
+
 .artwork-manager-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 20px;
+}
+
+@media (max-width: 900px) {
+    .artwork-manager-grid {
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
 }
 
 .artwork-manager-card {
@@ -130,6 +186,7 @@ canvas {
     cursor: pointer;
     position: relative;
     overflow: hidden;
+    width: 100%;
 }
 
 .artwork-manager-upload input[type="file"] {
@@ -141,16 +198,16 @@ canvas {
 
 .artwork-manager-actions {
     display: flex;
-    justify-content: flex-end;
 }
 
 .artwork-manager-actions button {
-    padding: 6px 12px;
+    width: 100%;
+    padding: 8px 12px;
     border-radius: 6px;
     border: none;
     background-color: rgba(255, 255, 255, 0.12);
     color: #fff;
-    font-size: 12px;
+    font-size: 13px;
     cursor: pointer;
     transition: background-color 0.2s ease;
 }
