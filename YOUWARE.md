@@ -1,7 +1,8 @@
 # Gallery Artwork Management System
 
 ## Project Overview
-A 3D art gallery built with Three.js and Cannon.js physics, featuring user image upload and management functionality with Youware Backend integration.
+A 3D art gallery built with Three.js and Cannon.js physics. Users can customise every canvas directly from the browser through the
+embedded artwork manager—no external backend services are required.
 
 ## Architecture
 
@@ -13,14 +14,10 @@ A 3D art gallery built with Three.js and Cannon.js physics, featuring user image
   - `main.js`: Core 3D gallery logic with image management system
   - `style.css`: Basic styling
 
-### Backend (Cloudflare Workers)
-- **Technology**: TypeScript on Cloudflare Workers
-- **Database**: D1 SQLite for user image storage
-- **Location**: `backend/` directory
-- **API Endpoints**:
-  - `GET /api/gallery/images` - Retrieve user's gallery images
-  - `POST /api/gallery/upload` - Upload/update artwork images
-  - `DELETE /api/gallery/{artworkId}` - Delete specific artwork
+### Storage
+- **Primary**: Browser `localStorage`
+- **Format**: Base64-encoded JPEG/PNG generated from uploaded images
+- **Persistence**: Remains on the device/browser where the upload occurred
 
 ## Gallery Structure
 Artworks are organized by wall positions:
@@ -32,51 +29,21 @@ Artworks are organized by wall positions:
 ## Key Features
 
 ### Image Management System
-- **Replace Button**: Located below "Click to play" button
-- **Modal Interface**: Organized by wall sections with 3 artworks per wall
-- **Upload Functionality**: Local image upload with compression
-- **Dual Storage**: Youware Backend + localStorage fallback
-- **User-Specific**: Each user sees their own uploaded images
+- **Manage Artworks Button**: Persistent button in the top-left corner of the viewport
+- **Modal Interface**: Organised by wall sections with three artworks per wall
+- **Upload Functionality**: Local image upload with automatic compression (max dimension 1024px, ~85% JPEG quality)
+- **Storage**: Browser `localStorage` per device/browser
+- **Reset Controls**: Restore any artwork to its default texture instantly
 
 ### Storage Strategy
-- **Primary**: Youware Backend (user-specific image storage)
-- **Fallback**: Browser localStorage (when backend unavailable)
-- **Image Format**: Base64 encoded for database compatibility
-- **Compression**: Automatic image compression (80% quality, max 800px)
+- **Compression**: Client-side resizing keeps uploads lightweight and friendly to storage quotas
+- **Limits**: Resulting images are capped to ~2.5MB per slot to avoid exhausting localStorage limits
 
-## Database Schema
-
-### Table: gallery_images
-```sql
-CREATE TABLE gallery_images (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT NOT NULL,
-    artwork_id TEXT NOT NULL,
-    image_data TEXT NOT NULL,  -- Base64 encoded
-    uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, artwork_id)
-);
-```
-
-## Development Commands
-
-### Backend Development
-```bash
-cd backend
-npm install                 # Install dependencies
-npm run build              # Build worker (dry-run)
-npm run deploy             # Deploy to Workers
-```
-
-### Frontend Testing
-- Open `index.html` in browser
-- Click "Click to play" to enter gallery
-- Click "Replace" button to manage artworks
-
-## User Authentication
-- Uses Youware's built-in user system
-- User identity via `X-Encrypted-Yw-ID` header
-- No additional authentication required
+## Using the Gallery
+- Open `index.html` in a WebGL-capable browser
+- Click **Click to play** to enter the 3D environment
+- Use **Manage Artworks** to upload, preview, or reset canvases
+- Uploads remain available on the same browser/device thanks to `localStorage`
 
 ## File Structure
 ```
@@ -88,15 +55,9 @@ npm run deploy             # Deploy to Workers
 │   ├── artwork1.jpg - artwork12.jpg
 │   ├── reference1.png      # UI reference image
 │   └── reference2.png      # Gallery layout reference
-└── backend/                # Cloudflare Workers backend
-    ├── src/index.ts        # Worker entry point
-    ├── wrangler.toml       # Worker configuration
-    ├── package.json        # Dependencies
-    └── schema.sql          # Database schema
 ```
 
 ## Important Notes
-- Images are compressed before storage due to 2MB row limit
-- Backend automatically handles CORS for browser requests
-- Fallback to localStorage ensures functionality without backend
-- Each user maintains their own personalized gallery
+- Images are compressed before storage to keep payload sizes manageable
+- If `localStorage` is unavailable (e.g., private browsing), uploads will work for the session but will not persist
+- Each browser/device maintains an independent personalised gallery
